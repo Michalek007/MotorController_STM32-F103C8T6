@@ -18,6 +18,7 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
+#include "dma.h"
 #include "tim.h"
 #include "usart.h"
 #include "gpio.h"
@@ -34,7 +35,8 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-
+#define PWM_ENABLED 0
+#define DSHOT_ENABLED 1
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -52,14 +54,25 @@ volatile uint8_t timerFlag1000 = 0;
 volatile uint8_t timerFlag2000 = 0;
 
 volatile uint8_t uartRxFlag = 0;
+volatile uint8_t uartRxFreqFlag = 0;
+volatile uint8_t uartRxDshotPacketFlag = 0;
 uint8_t uartRxBuffer[1] = {0};
 
-volatile uint16_t pwmCompareValue = 500;
+volatile uint16_t pwmDutyCycle = 50;
+volatile uint16_t pwmFrequency = 1000;
 
-volatile uint32_t period = 0;
-volatile uint32_t highTime = 0;
 volatile float frequency = 0;
 volatile float dutyCycle = 0;
+volatile uint32_t period = 0;
+volatile uint32_t highTime = 0;
+//static uint32_t period = 0;
+//static uint32_t highTime = 0;
+//volatile uint8_t dutyCycle = 0;
+
+volatile uint32_t dshotLastPulse = 0;
+volatile uint32_t dshotPulseWidth = 0;
+
+uint32_t dshotBuffer[16];
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -101,22 +114,34 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
+  MX_DMA_Init();
   MX_USART1_UART_Init();
   MX_TIM1_Init();
   MX_TIM2_Init();
   MX_TIM3_Init();
+  MX_TIM4_Init();
   /* USER CODE BEGIN 2 */
   HAL_TIM_Base_Start_IT(&htim1);
-  HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_1);
-  HAL_TIM_IC_Start_IT(&htim3, TIM_CHANNEL_1);
-//  HAL_TIM_IC_Start(&htim3, TIM_CHANNEL_2);
-  HAL_TIM_IC_Start_IT(&htim3, TIM_CHANNEL_2);
+
+  if (PWM_ENABLED){
+	  HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_1);
+	  HAL_TIM_IC_Start_IT(&htim3, TIM_CHANNEL_1);
+	  HAL_TIM_IC_Start_IT(&htim3, TIM_CHANNEL_2);
+  }
+  if (DSHOT_ENABLED){
+//	  HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_1);
+	  DShot_Init();
+//	  HAL_TIM_IC_Start_IT(&htim4, TIM_CHANNEL_1);
+	  HAL_TIM_IC_Start_IT(&htim3, TIM_CHANNEL_1);
+	  HAL_TIM_IC_Start_IT(&htim3, TIM_CHANNEL_2);
+  }
   UART_Print("Init done!\n");
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-  __HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_1, pwmCompareValue);
+//  __HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_1, pwmDutyCycle);
+  PWM_UpdateDutyCycle(pwmDutyCycle);
   HAL_UART_Receive_IT(&huart1, uartRxBuffer, 1);
   while (1)
   {
@@ -130,10 +155,20 @@ int main(void)
 	  if (timerFlag2000){
 		  timerFlag2000 = 0;
 		  UART_Printf("Frequency: %d, Duty: %d\n", (uint32_t)frequency, (uint32_t)dutyCycle);
+		  UART_Printf("DShot pulse width: %u\n", dshotPulseWidth);
 	  }
 	  if (uartRxFlag){
 		  uartRxFlag = 0;
-		  __HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_1, pwmCompareValue);
+//		  __HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_1, pwmDutyCycle);
+		  PWM_UpdateDutyCycle(pwmDutyCycle);
+	  }
+	  if (uartRxFreqFlag){
+		  uartRxFreqFlag = 0;
+		  PWM_UpdateFrequency(pwmFrequency);
+	  }
+	  if (uartRxDshotPacketFlag){
+		  uartRxDshotPacketFlag = 0;
+		  DShot_SendPacket();
 	  }
   }
   /* USER CODE END 3 */
@@ -202,19 +237,37 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
     if (huart->Instance == USART1)
     {
-    	if (uartRxBuffer[0] == 119){
-  		  if (pwmCompareValue < 1000){
-      		pwmCompareValue += 10;
+    	if (uartRxBuffer[0] == 'w'){
+  		  if (pwmDutyCycle < 100){
+      		pwmDutyCycle += 10;
       		uartRxFlag = 1;
   		  }
     	}
-    	else if (uartRxBuffer[0] == 115){
-    		if (pwmCompareValue >= 10){
-    			pwmCompareValue -= 10;
+    	else if (uartRxBuffer[0] == 's'){
+    		if (pwmDutyCycle >= 10){
+    			pwmDutyCycle -= 10;
         		uartRxFlag = 1;
     		}
     	}
-    	UART_Printf("%d\n", pwmCompareValue);
+    	else if (uartRxBuffer[0] == 'r'){
+    		if (pwmFrequency < 65000){
+    			pwmFrequency += 1000;
+    			uartRxFreqFlag = 1;
+    		}
+    	}
+    	else if (uartRxBuffer[0] == 'f'){
+    		if (pwmFrequency >= 1000){
+    			pwmFrequency -= 1000;
+    			uartRxFreqFlag = 1;
+    		}
+    	}
+    	else if (uartRxBuffer[0] == 'q'){
+    		if (DSHOT_ENABLED){
+    			uartRxDshotPacketFlag = 1;
+    		}
+
+    	}
+    	UART_Printf("%d, %d\n", pwmDutyCycle, pwmFrequency);
         HAL_UART_Receive_IT(&huart1, uartRxBuffer, 1);
     }
 }
@@ -233,14 +286,67 @@ void HAL_TIM_IC_CaptureCallback(TIM_HandleTypeDef *htim)
             // read high time (rising to falling edge)
             highTime = HAL_TIM_ReadCapturedValue(htim, TIM_CHANNEL_2);
         }
-
         // when both values are updated, calculate:
         if (period != 0)
         {
             dutyCycle = ((float)highTime / (float)period) * 100.0f;
-            frequency = (float)(1000000.0f / (float)period); // 1 MHz timer clock
+//            dutyCycle = (uint8_t)((((float)highTime / (float)period) * 100.0f) + 0.5f);
+            frequency = (float)(SystemCoreClock / (htim->Instance->PSC + 1) / (float)period);
         }
     }
+    else if (htim->Instance == TIM4){
+        if (htim->Channel == HAL_TIM_ACTIVE_CHANNEL_1)
+        {
+        	uint32_t dshotPulse = HAL_TIM_ReadCapturedValue(htim, TIM_CHANNEL_1);
+//        	dshotPulseWidth = dshotPulse - dshotLastPulse;
+            if (dshotPulse >= dshotLastPulse){
+            	dshotPulseWidth = dshotPulse - dshotLastPulse;
+            }
+            else{
+            	dshotPulseWidth = (0xFFFF - dshotLastPulse) + dshotPulse;  // handle timer rollover
+            }
+        	dshotLastPulse = dshotPulse;
+        	WriteDshotBuffer(dshotPulseWidth);
+        }
+    }
+}
+
+void PWM_UpdateFrequency(uint16_t targetFrequency){
+//	uint16_t targetARR = 1000000 / targetFrequency - 1; // clock is 1MHz
+	uint16_t targetARR = SystemCoreClock / (htim2.Instance->PSC + 1) / targetFrequency - 1; // clock is 1MHz
+	HAL_TIM_PWM_Stop(&htim2, TIM_CHANNEL_1);
+
+//	__HAL_TIM_SET_PRESCALER(&htimX, newPrescaler);
+	__HAL_TIM_SET_AUTORELOAD(&htim2, targetARR);
+
+	__HAL_TIM_SET_COUNTER(&htim2, 0); // optional: reset counter
+	__HAL_TIM_CLEAR_FLAG(&htim2, TIM_FLAG_UPDATE);
+	__HAL_TIM_ENABLE_IT(&htim2, TIM_IT_UPDATE);
+	HAL_TIM_GenerateEvent(&htim2, TIM_EVENTSOURCE_UPDATE);
+
+//	__HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_1, (targetARR + 1) / 2);
+	PWM_UpdateDutyCycle(pwmDutyCycle);
+
+	HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_1);
+}
+
+void PWM_UpdateDutyCycle(uint8_t targetDutyCycle){
+	uint16_t targetCompareValue = (targetDutyCycle * htim2.Instance->ARR) / 100;
+	__HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_1, targetCompareValue);
+}
+
+void WriteDshotBuffer(uint32_t data){
+	static uint8_t head = 0;
+	dshotBuffer[head] = data;
+	++head;
+	if (head > 15){
+//		HAL_TIM_PWM_Stop_DMA(&htim2, TIM_CHANNEL_1);
+		head = 0;
+		for (uint8_t i=0; i<16;i++){
+	    	UART_Printf("%d, ", dshotBuffer[i]);
+		}
+    	UART_Print("\n");
+	}
 }
 /* USER CODE END 4 */
 
