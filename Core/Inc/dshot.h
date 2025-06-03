@@ -11,12 +11,18 @@
 #include "main.h"
 
 #define DSHOT_BIT_COUNT 16
-#define PWM_TIMER htim2
-#define PWM_CHANNEL TIM_CHANNEL_1
 
 typedef enum {
-	DSHOT_150=0
+	DSHOT150, DSHOT300, DSHOT600, DSHOT1200
 } DShotType;
+
+typedef struct {
+	TIM_HandleTypeDef *Tim;
+	uint32_t Channel;
+} PwmHandler;
+
+void DShot_TimerInit(DShotType dshotType, TIM_HandleTypeDef *tim, uint32_t channel);
+void DShot_SendPacket(uint16_t throttle, uint8_t telemetry);
 
 /**
  * @brief Represents a 16-bit DShot packet.
@@ -36,5 +42,8 @@ typedef struct {
 	uint8_t crc;
 } DShotPacket;
 
+void DShot_Deserialize(DShotPacket *dshotPacket, uint8_t *data, uint8_t size);
+void DShot_DeserializePulseWidthUs(DShotPacket *dshotPacket, uint16_t *data, uint8_t size, DShotType dshotType);
+uint8_t DShot_ValidateCrc(DShotPacket *dshotPacket);
 
 #endif /* INC_DSHOT_H_ */

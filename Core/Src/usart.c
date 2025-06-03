@@ -1,21 +1,21 @@
 /* USER CODE BEGIN Header */
 /**
-  ******************************************************************************
-  * @file    usart.c
-  * @brief   This file provides code for the configuration
-  *          of the USART instances.
-  ******************************************************************************
-  * @attention
-  *
-  * Copyright (c) 2025 STMicroelectronics.
-  * All rights reserved.
-  *
-  * This software is licensed under terms that can be found in the LICENSE file
-  * in the root directory of this software component.
-  * If no LICENSE file comes with this software, it is provided AS-IS.
-  *
-  ******************************************************************************
-  */
+ ******************************************************************************
+ * @file    usart.c
+ * @brief   This file provides code for the configuration
+ *          of the USART instances.
+ ******************************************************************************
+ * @attention
+ *
+ * Copyright (c) 2025 STMicroelectronics.
+ * All rights reserved.
+ *
+ * This software is licensed under terms that can be found in the LICENSE file
+ * in the root directory of this software component.
+ * If no LICENSE file comes with this software, it is provided AS-IS.
+ *
+ ******************************************************************************
+ */
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "usart.h"
@@ -118,15 +118,15 @@ void HAL_UART_MspDeInit(UART_HandleTypeDef* uartHandle)
 }
 
 /* USER CODE BEGIN 1 */
-void UART_Print(const char* string){
-	HAL_UART_Transmit(HUART_PRINT, (uint8_t*)string, strlen(string), HAL_MAX_DELAY);
+void UART_Print(const char *string) {
+	HAL_UART_Transmit(HUART_PRINT, (uint8_t*) string, strlen(string), HAL_MAX_DELAY);
 }
 
-void UART_Printf(const char* string, ...){
+void UART_Printf(const char *string, ...) {
 	va_list argp;
 	va_start(argp, string);
 	char stringf[MAX_PRINTF_LEN];
-	if (vsprintf(stringf, string, argp) > 0){
+	if (vsprintf(stringf, string, argp) > 0) {
 		UART_Print(stringf);
 	}
 	va_end(argp);
